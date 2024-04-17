@@ -36,7 +36,7 @@ async def loaders_detail(id: int, db=Depends(connect_to_database)):
     info = await db.fetch("SELECT workers.first_name, workers.last_name, start_time, end_time, storages.address FROM working JOIN workers ON working.worker=workers.id JOIN storages ON working.storage=storages.id WHERE loader=$1", id)
     info2 = await db.fetch("SELECT start_time, end_time, repair_companies.name, cost FROM repairing JOIN repair_companies ON repairing.repair_company=repair_companies.id  WHERE loader=$1", id)
     if item:
-        return {"loader":dict(item), "works": info, "repairs": info2}
+        return {"loader":dict(item), "works": [infow for infow in info], "repairs": [infow for infow in info2]}
     else:
         raise HTTPException(status_code=404)
 
@@ -82,13 +82,14 @@ async def delete_loader(id: int, db=Depends(connect_to_database)):
     try: 
         archive_work = """
             INSERT INTO archive_working(loader, worker, start_time, end_time, storage)
-            SELECT (loader, worker, start_time, end_time, storage) FROM working
+            SELECT loader, worker, start_time, end_time, storage FROM working
             WHERE loader=$1
         """
         await db.execute(archive_work, id)
+        
         archive_repair = """
-            INSERT INTO archive_repairing(loader, start_time, end_time, storage, repair_company)
-            SELECT (oader, start_time, end_time, storage, repair_company) FROM rapairing
+            INSERT INTO archive_repairing(loader, start_time, end_time, repair_company)
+            SELECT loader, start_time, end_time, repair_company FROM repairing
             WHERE loader=$1
         """
         await db.execute(archive_repair, id)

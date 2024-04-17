@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from db import connect_to_database
+from datetime import datetime
+from typing import Optional
 
 from models import WorkSearch
 
@@ -7,7 +9,7 @@ from models import WorkSearch
 router = APIRouter()
 
 @router.get("/worktime/")
-async def get_loaders(item: WorkSearch = None, db=Depends(connect_to_database)):
+async def get_loaders(start: Optional[datetime] = None, end: Optional[datetime] = None, db=Depends(connect_to_database)):
     try:
         values = ()
         query = """
@@ -19,8 +21,8 @@ async def get_loaders(item: WorkSearch = None, db=Depends(connect_to_database)):
                     working
         """
 
-        if item:
-            values = (item.start_time, item.end_time)
+        if start and end:
+            values = (start, end)
             query += "WHERE start_time BETWEEN $1 AND $2 AND end_time BETWEEN $1 AND $2"
 
         query += """
@@ -38,26 +40,27 @@ async def get_loaders(item: WorkSearch = None, db=Depends(connect_to_database)):
             JOIN loader_work_time  AS work_time ON loaders.id=work_time.loader;
         """
         items = await db.fetch(query, *values)
-        return [dict(item) for item in items]
+        return {'data': [dict(item) for item in items]}
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500)
     
 @router.get("/repairtime/")
-async def get_loaders(item: WorkSearch = None, db=Depends(connect_to_database)):
+async def get_loaders(start: Optional[datetime] = None, end: Optional[datetime] = None, db=Depends(connect_to_database)):
     try:
         values = ()
         query = """
             WITH loader_repair_time AS (
                 SELECT
                     loader,
-                    SUM(EXTRACT(EPOCH FROM (end_time - start_time))) AS total_seconds
+                    SUM(EXTRACT(EPOCH FROM (end_time - start_time))) AS total_seconds,
+                    SUM(cost) AS total_cost
                 FROM
                     repairing
         """
-
-        if item:
-            values = (item.start_time, item.end_time)
+        
+        if start and end:
+            values = (start, end)
             query += "WHERE start_time BETWEEN $1 AND $2 AND end_time BETWEEN $1 AND $2"
 
         query += """
@@ -70,19 +73,20 @@ async def get_loaders(item: WorkSearch = None, db=Depends(connect_to_database)):
                 TO_CHAR(
                     INTERVAL '1 second' * repair_time.total_seconds,
                     'HH24:MI:SS'
-                ) AS total_repair_time
+                ) AS total_repair_time,
+                repair_time.total_cost AS total_repair_cost
             FROM loaders
             JOIN loader_repair_time  AS repair_time ON loaders.id=repair_time.loader;
         """
         items = await db.fetch(query, *values)
-        return [dict(item) for item in items]
+        return {'data': [dict(item) for item in items]}
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500)
     
 
 @router.get("/")
-async def all_info(item: WorkSearch = None, db=Depends(connect_to_database)):
+async def all_info(start: Optional[datetime] = None, end: Optional[datetime] = None, db=Depends(connect_to_database)):
     values = ()
     query = """
         SELECT * FROM (
@@ -97,17 +101,18 @@ async def all_info(item: WorkSearch = None, db=Depends(connect_to_database)):
 	        ON repairing.repair_company=repair_companies.id
         ) AS merged_data
     """
-    if item:
+    
+    if start and end:
+        values = (start, end)
         query += " WHERE start_time BETWEEN $1 AND $2 and end_time BETWEEN $1 AND $2"
-        values = (item.start_time, item.end_time)
     
     query += " ORDER BY start_time"
     items = await db.fetch(query, *values)
-    return [dict(item) for item in items]
+    return {'data': [dict(item) for item in items]}
 
 
 @router.get("/{id}")
-async def all_info(id: int, item: WorkSearch = None , db=Depends(connect_to_database)):
+async def all_info(id: int, start: Optional[datetime] = None, end: Optional[datetime] = None, db=Depends(connect_to_database)):
     query = """
         SELECT * FROM (
         SELECT working.loader, working.start_time, working.end_time, storages.address 
@@ -123,10 +128,65 @@ async def all_info(id: int, item: WorkSearch = None , db=Depends(connect_to_data
         WHERE loader=$1 
     """
     values = (id, )
-    if item:
+    
+    if start and end:
+        values += (start, end)
         query += " AND start_time BETWEEN $2 AND $3 and end_time BETWEEN $2 AND $3"
-        values += (item.start_time, item.end_time)
 
     query += " ORDER BY start_time"
     items = await db.fetch(query, *values)
-    return [dict(item) for item in items]
+    return {'data': [dict(item) for item in items]}
+
+
+@router.get("/hours/")
+async def pricol(db=Depends(connect_to_database)):
+    try:
+        loaders = await db.fetch("select number from loaders")
+        loaders = [item[0] for item in loaders]
+
+        loader_cols = ', '.join([
+            f"COALESCE(SUM(CASE WHEN l.number = '{number}' THEN lh.hours_worked else 0 end), 0) as {number}"
+            for number in loaders
+        ])
+
+        query = f"""
+            WITH month_series AS (
+                SELECT 
+                    generate_series(
+                        date_trunc('month', current_date - interval '11 month'), 
+                        date_trunc('month', current_date), 
+                        interval '1 month'
+                    ) AS month
+            ),
+            loader_hours AS (
+                SELECT 
+                    DATE_TRUNC('month', start_time) AS month,
+                    loader,
+                    ROUND(SUM(EXTRACT(epoch FROM (COALESCE(end_time, current_timestamp) - start_time)) / 3600), 2) AS hours_worked
+                FROM 
+                    working
+                WHERE 
+                    start_time >= current_date - interval '11 month'
+                GROUP BY 
+                    month, loader
+            )
+            SELECT 
+                to_char(ms.month, 'YYYY-MM') AS month,
+                {loader_cols}
+            FROM 
+                month_series ms
+            CROSS JOIN 
+                loaders l
+            LEFT JOIN 
+                loader_hours lh ON DATE_TRUNC('month', lh.month) = ms.month AND l.id = lh.loader
+            GROUP BY 
+                ms.month
+            ORDER BY 
+                ms.month
+        """
+
+        result = await db.fetch(query)
+        return {'headers': loaders,'data': [item for item in result]}
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500)

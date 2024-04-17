@@ -11,7 +11,7 @@ from models import WorkSearch, NewWorkParams, PostWorkParams
 router = APIRouter()
 
 @router.get("/")
-async def work_list(item: WorkSearch = None, db=Depends(connect_to_database)):
+async def work_list(start: Optional[datetime] = None, end: Optional[datetime] = None, db=Depends(connect_to_database)):
     query = """
         SELECT working.id, loaders.number, workers.first_name, workers.last_name, working.start_time, working.end_time, storages.address
         FROM working 
@@ -21,13 +21,12 @@ async def work_list(item: WorkSearch = None, db=Depends(connect_to_database)):
     """
     values = ()  # Define an empty tuple here
 
-    if item:
+    if start and end:
         query += " WHERE start_time BETWEEN $1 AND $2 and end_time BETWEEN $1 AND $2"
-        values = (item.start_time, item.end_time)
+        values = (start, end)
     
     items = await db.fetch(query, *values)
-    print(query)
-    return [dict(item) for item in items]
+    return {'data': [dict(item) for item in items]}
 
 @router.get("/active/")
 async def work_inprogress(db=Depends(connect_to_database)):
@@ -41,7 +40,7 @@ async def work_inprogress(db=Depends(connect_to_database)):
     """
     
     items = await db.fetch(query)
-    return [dict(item) for item in items]
+    return {'data': [dict(item) for item in items]}
 
 @router.get("/ended/")
 async def work_ended(db=Depends(connect_to_database)):
@@ -55,12 +54,12 @@ async def work_ended(db=Depends(connect_to_database)):
     """
     
     items = await db.fetch(query)
-    return [dict(item) for item in items]
+    return {'data': [dict(item) for item in items]}
 
 @router.get("/archive/")
 async def repair_archive(db=Depends(connect_to_database)):
     items = await db.fetch("SELECT * FROM archive_working")
-    return [dict(item) for item in items]
+    return {'data': [dict(item) for item in items]}
 
 
 @router.post("/new/")
@@ -106,14 +105,14 @@ async def end_work(work_id: int, db=Depends(connect_to_database)):
             await db.execute("UPDATE loaders SET status=$1 WHERE id=$2", new_status, result['loader'])
             await db.execute("UPDATE workers SET is_free=True WHERE id=$1", result['worker'])
             
-            time = await db.fetchrow("select start_time, end_time from working where id=$1", id)
-            start_time, end_time = datetime(time['start_time']), datetime(time['end_time'])
+            time = await db.fetchrow("select start_time, end_time from working where id=$1", work_id)
+            start_time, end_time = time['start_time'], time['end_time']
             duration = start_time-end_time
             duration = duration.total_seconds()
 
             if duration > 8*60*60+15*60:
                 return {"message": "WORK MORE THAT 8 HOURS IT IS VERY BAD :("}
-            return
+            return {"message": "OK"}
         else:
             raise HTTPException(status_code=404, detail="work(to end) not found")
     except Exception as e:

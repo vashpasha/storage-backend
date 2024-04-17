@@ -9,7 +9,7 @@ router = APIRouter()
 @router.get("/")
 async def storage_list(db=Depends(connect_to_database)):
     items = await db.fetch("SELECT * FROM storages")
-    return [dict(item) for item in items]
+    return {'data': [dict(item) for item in items]}
 
 @router.post("/")
 async def new_storage(item: StorageParams, db=Depends(connect_to_database)):
@@ -35,7 +35,7 @@ async def update_loader(id:int, item: StorageParams, db=Depends(connect_to_datab
             WHERE id=$2
         """
         values = (
-            item.name or previous['address'],
+            item.address or previous['address'],
             id
         )
         await db.execute(query, *values)
@@ -48,7 +48,7 @@ async def delete_storage(id: int, db=Depends(connect_to_database)):
     try:
         archive_work = """
             INSERT INTO archive_working(loader, worker, start_time, end_time, storage)
-            SELECT (loader, worker, start_time, end_time, storage) FROM working
+            SELECT loader, worker, start_time, end_time, storage FROM working
             WHERE storage=$1
         """
         await db.execute(archive_work, id)

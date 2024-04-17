@@ -25,15 +25,16 @@ app.include_router(repaircompanies_router, prefix="/repaircompanies")
 app.include_router(storages_router, prefix="/storages")
 app.include_router(docs_router, prefix="/docs")
 app.include_router(position_router, prefix="/positions")
-app.include_router(workers_router, prefix="/worker")
+app.include_router(workers_router, prefix="/workers")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173"],  # Update with your frontend application URL
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE", "PUT", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Access-Control-Allow-Headers", "Access-Control-Allow-Origin", "Access-Control-Allow-Credentials"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
 )
+
 @app.on_event("startup")
 async def startup_event():
     app.state.db = await connect_to_database()

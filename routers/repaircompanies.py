@@ -9,7 +9,7 @@ router = APIRouter()
 @router.get("/")
 async def status_list(db=Depends(connect_to_database)):
     items = await db.fetch("SELECT * FROM repair_companies")
-    return [dict(item) for item in items]
+    return {'data': [dict(item) for item in items]}
 
 @router.post("/")
 async def new_repair_company(item: RepairCoParams, db=Depends(connect_to_database)):
@@ -30,7 +30,7 @@ async def update_loader(id:int, item: RepairCoParams, db=Depends(connect_to_data
     try:
         previous = await db.fetchrow("SELECT name, phone, address FROM repair_companies WHERE id=$1", id)
         query = """
-            UPDATE prods
+            UPDATE repair_companies
             SET name=$1, phone=$2, address=$3
             WHERE id=$4
         """
@@ -49,8 +49,8 @@ async def update_loader(id:int, item: RepairCoParams, db=Depends(connect_to_data
 async def delete_repair_company(id: int, db=Depends(connect_to_database)):
     try:
         archive_repair = """
-            INSERT INTO archive_repairing(loader, start_time, end_time, storage, repair_company)
-            SELECT (loader, start_time, end_time, storage, repair_company) FROM rapairing
+            INSERT INTO archive_repairing(loader, start_time, end_time, cost, repair_company)
+            SELECT loader, start_time, end_time, cost, repair_company FROM repairing
             WHERE repair_company=$1
         """
         await db.execute(archive_repair, id)
@@ -60,6 +60,7 @@ async def delete_repair_company(id: int, db=Depends(connect_to_database)):
             raise HTTPException(status_code=404)
         return
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500)
     
 @router.post("/table/")

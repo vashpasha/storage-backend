@@ -75,3 +75,4 @@ class WorkerParams(BaseModel):
     last_name: Optional[str] = None
     position: Optional[int] = None
     phone: Optional[str] = None
+    is_free: Optional[bool] = None

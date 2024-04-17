@@ -9,7 +9,7 @@ router = APIRouter()
 @router.get("/")
 async def positions_list(db=Depends(connect_to_database)):
     items = await db.fetch("SELECT * FROM positions")
-    return [dict(item) for item in items]
+    return {'data': [dict(item) for item in items]}
 
 @router.post("/")
 async def positions_create(item: PositionsParams, db=Depends(connect_to_database)):
