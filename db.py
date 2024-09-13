@@ -3,8 +3,8 @@ import asyncpg
 
 async def connect_to_database():
     conn = await asyncpg.connect(
-        user="pasha", password="703568ks",
-        database="storage", host="127.0.0.1"
+        user="user", password="password",
+        database="db", host="127.0.0.1"
     )
     return conn
 
